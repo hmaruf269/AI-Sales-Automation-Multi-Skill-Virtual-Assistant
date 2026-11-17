@@ -1,0 +1,120 @@
+name: ai-sales-assistant
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sales_assistant
+      POSTGRES_USER: sales_assistant
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sales_assistant -d sales_assistant"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  hermes:
+    # Exact official source tag: avoids silently upgrading the agent API contract.
+    build:
+      context: https://github.com/NousResearch/hermes-agent.git#v0.23.2
+    image: ai-sales-hermes:v0.23.2
+    restart: unless-stopped
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: 8642
+      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?Set HERMES_API_SERVER_KEY in .env}
+      API_SERVER_CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - hermes_data:/opt/data
+    ports:
+      - "127.0.0.1:8642:8642"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8642/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    command: ["gateway", "run"]
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://sales_assistant:${POSTGRES_PASSWORD}@postgres:5432/sales_assistant
+      REDIS_URL: redis://redis:6379/0
+      WORKER_MODE: celery
+      OWNER_EMAIL: ${OWNER_EMAIL}
+      OWNER_PASSWORD: ${OWNER_PASSWORD}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      HERMES_RESEARCH_URL: http://hermes:8642
+      HERMES_RESEARCH_KEY: ${HERMES_API_SERVER_KEY}
+      HERMES_WRITER_URL: http://hermes:8642
+      HERMES_WRITER_KEY: ${HERMES_API_SERVER_KEY}
+      HERMES_VERSION_PIN: v0.23.2
+      OPENAI_CONFIGURED: ${OPENAI_CONFIGURED:-false}
+      KIMI_CONFIGURED: ${KIMI_CONFIGURED:-false}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      hermes: {condition: service_healthy}
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://sales_assistant:${POSTGRES_PASSWORD}@postgres:5432/sales_assistant
+      REDIS_URL: redis://redis:6379/0
+      WORKER_MODE: celery
+      HERMES_RESEARCH_URL: http://hermes:8642
+      HERMES_RESEARCH_KEY: ${HERMES_API_SERVER_KEY}
+      HERMES_WRITER_URL: http://hermes:8642
+      HERMES_WRITER_KEY: ${HERMES_API_SERVER_KEY}
+      OPENAI_CONFIGURED: ${OPENAI_CONFIGURED:-false}
+      KIMI_CONFIGURED: ${KIMI_CONFIGURED:-false}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      hermes: {condition: service_healthy}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8000
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  hermes_data:
+  uploads:
