@@ -9,13 +9,10 @@ import type { SessionInfo } from "./types";
 
 /**
  * Chooses the data source:
- *  - NEXT_PUBLIC_DATA_MODE=demo  → always Demo Mode.
- *  - otherwise live: probe the backend. If unreachable, show a "backend unavailable" screen that offers
- *    an explicit opt-in to Demo Mode (remembered on this device until the owner exits it).
- * The demo client is loaded with a dynamic import so it is not part of the live bundle path.
+ *  - NEXT_PUBLIC_DATA_MODE=demo  → GitHub Pages static preview only.
+ *  - otherwise live: the FastAPI + Hermes stack. No in-browser demo fallback.
  */
 
-const DEMO_OPT_IN = "aiva-demo-opt-in";
 const FORCED_DEMO = process.env.NEXT_PUBLIC_DATA_MODE === "demo";
 
 type Phase = "checking" | "ready" | "unauthenticated" | "backend_down";
@@ -31,6 +28,7 @@ interface ApiContextValue {
   exitDemo: () => void;
   resetDemo: () => void;
   onLoggedIn: (s: SessionInfo) => void;
+  logout: () => Promise<void>;
 }
 
 const ApiContext = createContext<ApiContextValue | null>(null);
@@ -68,7 +66,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setPhase("checking");
-      if (FORCED_DEMO || window.localStorage.getItem(DEMO_OPT_IN) === "1") {
+      if (FORCED_DEMO) {
         await loadDemo();
         return;
       }
@@ -116,12 +114,8 @@ export function ApiProvider({ children }: { children: ReactNode }) {
       forcedDemo: FORCED_DEMO,
       backendError,
       retry: () => setAttempt((n) => n + 1),
-      enterDemo: () => {
-        window.localStorage.setItem(DEMO_OPT_IN, "1");
-        setAttempt((n) => n + 1);
-      },
+      enterDemo: () => setAttempt((n) => n + 1),
       exitDemo: () => {
-        window.localStorage.removeItem(DEMO_OPT_IN);
         queryClient.clear();
         setApi(new HttpApiClient());
         setAttempt((n) => n + 1);
@@ -135,6 +129,17 @@ export function ApiProvider({ children }: { children: ReactNode }) {
         setSession(s);
         setPhase("ready");
         queryClient.invalidateQueries();
+      },
+      logout: async () => {
+        try {
+          await api.logout();
+        } catch {
+          /* session may already be gone */
+        }
+        setSession(null);
+        setPhase("unauthenticated");
+        queryClient.clear();
+        setApi(new HttpApiClient());
       },
     }),
     [api, phase, session, backendError, queryClient],

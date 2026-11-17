@@ -85,6 +85,7 @@ export interface WorkflowRun {
   status: WorkflowStatus;
   /** 0–100, or null when progress is not measurable. */
   progress: number | null;
+  progress_message?: string | null;
   steps: WorkflowStep[];
   result_summary: string | null;
   /** Partial or final structured results to link to (e.g. research job, blog post). */

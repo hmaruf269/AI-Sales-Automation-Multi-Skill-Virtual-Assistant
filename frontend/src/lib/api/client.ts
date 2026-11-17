@@ -19,6 +19,13 @@ export interface ApiClient {
   // overview & workflows
   getOverview(): Promise<T.Overview>;
   listWorkflowRuns(params?: { status?: T.WorkflowStatus | ""; limit?: number }): Promise<T.WorkflowRun[]>;
+  startWorkflowRun(input: {
+    type: T.WorkflowType;
+    title?: string;
+    input: string;
+    model_config_id?: T.ID | null;
+    params?: Record<string, unknown>;
+  }): Promise<T.WorkflowRun>;
   getWorkflowRun(id: T.ID): Promise<T.WorkflowRun>;
   pauseWorkflowRun(id: T.ID): Promise<T.WorkflowRun>;
   resumeWorkflowRun(id: T.ID): Promise<T.WorkflowRun>;
@@ -124,6 +131,13 @@ export interface ApiClient {
   getUnitPrices(): Promise<T.UnitPrices>;
   updateUnitPrices(input: T.UnitPrices): Promise<T.UnitPrices>;
   getBudget(): Promise<T.BudgetSettings>;
+  getBudgetStatus(): Promise<{
+    currency: string;
+    inflight_allowance_pct: number;
+    daily: { limit: number | null; spent: number };
+    monthly: { limit: number | null; spent: number };
+    unpriced_records_this_month: number;
+  }>;
   updateBudget(input: T.BudgetSettings): Promise<T.BudgetSettings>;
 
   // settings

@@ -1,100 +1,411 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, Archive, ArrowUpRight, Bot, BriefcaseBusiness, CalendarDays, Check,
-  CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, FileText, Globe2, Inbox,
-  LayoutDashboard, ListChecks, Mail, Menu, MessageSquareText, Moon, MoreHorizontal, Newspaper,
-  Pause, Play, Plus, Search, Send, Settings, ShieldCheck, Sparkles, Sun, Upload, Users, X, Zap,
+  Activity, AlertTriangle, Archive, Bot, BriefcaseBusiness, CalendarDays, CheckCircle2, CircleDollarSign,
+  Database, Globe2, Inbox, LayoutDashboard, ListChecks, LoaderCircle, LogOut, Mail, Menu, Moon, Newspaper,
+  Plus, Search, Send, Settings, Sparkles, Sun, Users, X, Zap,
 } from "lucide-react";
+import { errorMessage } from "@/lib/api/client";
+import { useApi, useApiContext } from "@/lib/api/provider";
+import type { ModelPricingInput, WorkflowRun, WorkflowStatus, WorkflowType } from "@/lib/api/types";
 
-type PageKey = "overview"|"assistant"|"research"|"leads"|"inbox"|"approvals"|"tasks"|"blog"|"knowledge"|"automations"|"usage"|"settings";
+type PageKey =
+  | "overview" | "assistant" | "research" | "leads" | "inbox" | "approvals"
+  | "tasks" | "blog" | "knowledge" | "automations" | "usage" | "settings";
 type Icon = typeof Activity;
 
-const nav: {key:PageKey;label:string;icon:Icon}[] = [
-  {key:"overview",label:"Overview",icon:LayoutDashboard},{key:"assistant",label:"AI Assistant",icon:Sparkles},
-  {key:"research",label:"Buyer Research",icon:Globe2},{key:"leads",label:"Leads / CRM",icon:Users},
-  {key:"inbox",label:"Email Inbox",icon:Inbox},{key:"approvals",label:"Approvals",icon:ListChecks},
-  {key:"tasks",label:"Tasks & Calendar",icon:CalendarDays},{key:"blog",label:"Blog Studio",icon:Newspaper},
-  {key:"knowledge",label:"Business Knowledge",icon:Database},{key:"automations",label:"Automations",icon:Zap},
-  {key:"usage",label:"Usage & Costs",icon:CircleDollarSign},{key:"settings",label:"Settings",icon:Settings},
+const nav: { key: PageKey; label: string; icon: Icon }[] = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "assistant", label: "AI Assistant", icon: Sparkles },
+  { key: "research", label: "Buyer Research", icon: Globe2 },
+  { key: "leads", label: "Leads / CRM", icon: Users },
+  { key: "inbox", label: "Email Inbox", icon: Inbox },
+  { key: "approvals", label: "Approvals", icon: ListChecks },
+  { key: "tasks", label: "Tasks & Calendar", icon: CalendarDays },
+  { key: "blog", label: "Blog Studio", icon: Newspaper },
+  { key: "knowledge", label: "Business Knowledge", icon: Database },
+  { key: "automations", label: "Automations", icon: Zap },
+  { key: "usage", label: "Usage & Costs", icon: CircleDollarSign },
+  { key: "settings", label: "Settings", icon: Settings },
 ];
 
-const leads = [
-  {company:"Nordwind Textil GmbH",country:"Germany",email:"buying@nordwind.example",product:"Organic cotton T-shirts",status:"Interested",sender:"sales@aurora.example",last:"Today, 10:42",next:"Nov 20"},
-  {company:"Amstel Apparel B.V.",country:"Netherlands",email:"purchasing@amstel.example",product:"Knit basics",status:"Replied",sender:"export@aurora.example",last:"Yesterday",next:"Needs review"},
-  {company:"Flanders Workwear NV",country:"Belgium",email:"aankoop@flanders.example",product:"Polo shirts",status:"Contacted",sender:"sales@aurora.example",last:"Nov 14",next:"Nov 19"},
-  {company:"Bodensee Textil KG",country:"Germany",email:"Not publicly listed",product:"Promotional textiles",status:"New",sender:"—",last:"—",next:"—"},
-  {company:"Lyonnaise Textile Import",country:"France",email:"achats@lyonnaise.example",product:"Cotton basics",status:"New",sender:"—",last:"—",next:"—"},
-];
+const ACTIVE: WorkflowStatus[] = ["queued", "running", "paused", "waiting_approval"];
 
-const conversations = [
-  {company:"Nordwind Textil",subject:"Re: Organic cotton range",preview:"Could you share your MOQ and lead time?",time:"10:42",unread:true,classification:"Interested"},
-  {company:"Amstel Apparel",subject:"Re: Knit basics supply",preview:"Please send the available fabric weights.",time:"Yesterday",unread:true,classification:"Information"},
-  {company:"Flanders Workwear",subject:"Automatic reply",preview:"I am out of office until 21 November.",time:"Nov 15",unread:false,classification:"Automatic"},
-];
-
-const activity = [
-  ["Reply needs review","Nordwind asked about MOQ and lead time","10 min"],
-  ["Research pass completed","4 candidates found, 1 duplicate skipped","1 hr"],
-  ["Outreach approved","3 reviewed emails moved to demo queue","3 hr"],
-  ["Knowledge updated","Organic T-shirt specifications approved","Yesterday"],
-];
-
-function Badge({children,tone=""}:{children:React.ReactNode;tone?:string}){return <span className={`badge ${tone}`}><span className="dot"/>{children}</span>}
-function Button({children,onClick,kind="",className="",type="button",disabled=false}:{children:React.ReactNode;onClick?:()=>void;kind?:string;className?:string;type?:"button"|"submit";disabled?:boolean}){return <button type={type} disabled={disabled} onClick={onClick} className={`btn ${kind} ${className}`}>{children}</button>}
-function Header({title,description,action}:{title:string;description:string;action?:React.ReactNode}){return <div className="page-head"><div><h2>{title}</h2><p>{description}</p></div>{action}</div>}
-function Status({value}:{value:string}){const v=value.toLowerCase();const tone=/interested|connected|completed|published|active|approved/.test(v)?"good":/failed|error|lost|disconnected/.test(v)?"danger":/pending|replied|running|paused|information/.test(v)?"warn":"brand";return <Badge tone={tone}>{value}</Badge>}
-function Empty({title,detail}:{title:string;detail:string}){return <div className="empty"><Archive size={28}/><strong style={{display:"block",color:"var(--text)",marginBottom:5}}>{title}</strong><span>{detail}</span></div>}
-
-export function Dashboard(){
-  const [page,setPage]=useState<PageKey>("overview"); const [dark,setDark]=useState(false); const [mobile,setMobile]=useState(false); const [toast,setToast]=useState("");
-  const notify=(m:string)=>{setToast(m);window.setTimeout(()=>setToast(""),2600)};
-  const go=(p:PageKey)=>{setPage(p);setMobile(false);window.scrollTo({top:0,behavior:"smooth"})};
-  const Active=nav.find(n=>n.key===page)!;
-  return <div data-theme={dark?"dark":"light"}>
-    <div className="shell">
-      <aside className={`sidebar ${mobile?"open":""}`}>
-        <div className="brand"><div className="brand-mark"><Sparkles size={20}/></div><div><strong>Nexa Sales AI</strong><small>Owner workspace</small></div></div>
-        <nav className="nav" aria-label="Main navigation">{nav.map(n=><button key={n.key} className={page===n.key?"active":""} onClick={()=>go(n.key)}><n.icon size={18}/>{n.label}</button>)}</nav>
-        <div className="sidebar-foot"><div className="owner"><div className="avatar">NMA</div><div><strong style={{fontSize:13}}>Nahin Meem Alifa</strong><small>Asia/Dhaka</small></div></div></div>
-      </aside>
-      <main className="main">
-        <div className="demo-bar"><span><strong>Demo Mode</strong> · Sample data only. No email, invitation, or post will be sent.</span><button className="btn sm" onClick={()=>notify("Backend connection is configured from server environment variables.")}>Connection details</button></div>
-        <header className="topbar"><div className="row"><button className="btn icon-btn mobile-toggle" onClick={()=>setMobile(!mobile)} aria-label="Toggle navigation"><Menu size={18}/></button><h1>{Active.label}</h1></div><div className="top-actions"><button className="btn icon-btn" aria-label="Toggle theme" onClick={()=>setDark(!dark)}>{dark?<Sun size={17}/>:<Moon size={17}/>}</button><button className="btn icon-btn" aria-label="Notifications"><Mail size={17}/></button></div></header>
-        <div className="content">{page==="overview"&&<Overview go={go}/>} {page==="assistant"&&<Assistant notify={notify}/>} {page==="research"&&<Research notify={notify}/>} {page==="leads"&&<Leads/>} {page==="inbox"&&<InboxPage notify={notify}/>} {page==="approvals"&&<Approvals notify={notify}/>} {page==="tasks"&&<Tasks notify={notify}/>} {page==="blog"&&<Blog notify={notify}/>} {page==="knowledge"&&<Knowledge notify={notify}/>} {page==="automations"&&<Automations notify={notify}/>} {page==="usage"&&<Usage/>} {page==="settings"&&<SettingsPage notify={notify}/>}</div>
-      </main>
-    </div>{mobile&&<button onClick={()=>setMobile(false)} aria-label="Close navigation" style={{position:"fixed",inset:0,border:0,background:"rgba(0,0,0,.3)",zIndex:25}}/>}{toast&&<div className="toast"><CheckCircle2 size={15} style={{display:"inline",marginRight:8}}/>{toast}</div>}
-  </div>
+function inferWorkflow(text: string): WorkflowType {
+  const t = text.toLowerCase();
+  if (/\bbuyers?|importer|wholesaler|companies\b/.test(t)) return "buyer_research";
+  if (/\boutreach|cold email\b/.test(t)) return "outreach_drafts";
+  if (/\breply|inbox|inbound\b/.test(t)) return "reply_summary";
+  if (/\bfollow[- ]?up\b/.test(t)) return "follow_up";
+  if (/\bblog|article|seo\b/.test(t)) return "blog_ideas";
+  if (/\btask|reminder|calendar\b/.test(t)) return "task_create";
+  if (/\bdaily summary\b/.test(t)) return "daily_summary";
+  return "general_research";
 }
 
-function Overview({go}:{go:(p:PageKey)=>void}){const metrics:[[string,string,Icon,string?],[string,string,Icon,string?],[string,string,Icon,string?],[string,string,Icon,string?],[string,string,Icon,string?]]=[ ["248","Total leads",Users],["18","Interested buyers",BriefcaseBusiness],["2","Replies need attention",Mail,"warn"],["5","Pending approvals",ListChecks,"warn"],["2","Running workflows",Activity,"brand"] ];return <>
-  <Header title="Good afternoon, Nahin" description="Here’s what needs your attention across sales and operations." action={<Button kind="primary" onClick={()=>go("assistant")}><Sparkles size={15}/>Ask Nexa</Button>}/>
-  <div className="quick-actions"><Button onClick={()=>go("research")}><Globe2 size={15}/>Find Buyers</Button><Button onClick={()=>go("approvals")}><Mail size={15}/>Draft Outreach</Button><Button onClick={()=>go("blog")}><Newspaper size={15}/>Write Blog</Button><Button onClick={()=>go("tasks")}><Plus size={15}/>Add Task</Button></div>
-  <div className="grid grid-5">{metrics.map(([n,l,I,t])=><div className="card metric" key={l}><div className="metric-icon"><I size={17}/></div><strong>{n}</strong><span>{l}</span>{t&&<div style={{marginTop:8}}><Badge tone={t}>Attention</Badge></div>}</div>)}</div>
-  <div className="grid grid-2" style={{marginTop:16}}><section className="card pad"><div className="card-head"><h3>Recent activity</h3><Button kind="ghost" className="sm" onClick={()=>go("automations")}>View history <ChevronRight size={14}/></Button></div><div className="list">{activity.map((a,i)=><div className="list-item" key={i}><div className="metric-icon" style={{margin:0,width:31,height:31}}><Activity size={14}/></div><div className="list-main"><strong>{a[0]}</strong><p>{a[1]}</p></div><span className="time">{a[2]}</span></div>)}</div></section>
-  <section className="card pad"><div className="card-head"><h3>Upcoming</h3><Button kind="ghost" className="sm" onClick={()=>go("tasks")}>Calendar <ChevronRight size={14}/></Button></div><div className="list"><div className="list-item"><Clock3 size={17}/><div className="list-main"><strong>Follow up · Flanders Workwear</strong><p>From sales@aurora.example</p></div><span className="time">Tomorrow</span></div><div className="list-item"><CalendarDays size={17}/><div className="list-main"><strong>Review Q4 quotation</strong><p>High priority · Dashboard reminder</p></div><span className="time">Nov 19</span></div><div className="list-item"><Users size={17}/><div className="list-main"><strong>Buyer call · Nordwind</strong><p>Invitation pending approval</p></div><span className="time">Nov 20</span></div></div></section></div>
-  <div className="card pad" style={{marginTop:16}}><div className="card-head"><div><h3>Today’s estimated spend</h3><span className="secondary">Application estimate, not a provider invoice</span></div><strong>$3.84 / $15.00</strong></div><div className="progress"><span style={{width:"26%"}}/></div></div>
-  </>}
+function Badge({ children, tone = "" }: { children: React.ReactNode; tone?: string }) {
+  return <span className={`badge ${tone}`}><span className="dot" />{children}</span>;
+}
+function Button({
+  children, onClick, kind = "", className = "", type = "button", disabled = false, style,
+}: {
+  children: React.ReactNode; onClick?: () => void; kind?: string; className?: string; type?: "button" | "submit"; disabled?: boolean; style?: CSSProperties;
+}) {
+  return <button type={type} disabled={disabled} onClick={onClick} className={`btn ${kind} ${className}`} style={style}>{children}</button>;
+}
+function Header({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
+  return <div className="page-head"><div><h2>{title}</h2><p>{description}</p></div>{action}</div>;
+}
+function Status({ value }: { value: string }) {
+  const v = value.toLowerCase();
+  const tone = /interested|connected|completed|published|active|approved/.test(v) ? "good"
+    : /failed|error|lost|disconnected/.test(v) ? "danger"
+    : /pending|queued|running|paused|information/.test(v) ? "warn" : "brand";
+  return <Badge tone={tone}>{value.replaceAll("_", " ")}</Badge>;
+}
+function Empty({ title, detail }: { title: string; detail: string }) {
+  return <div className="empty"><Archive size={28} /><strong style={{ display: "block", color: "var(--text)", marginBottom: 5 }}>{title}</strong><span>{detail}</span></div>;
+}
+function Unavailable({ name }: { name: string }) {
+  return <Empty title={`${name} is empty`} detail="This module has no live records yet. Hermes workflows (Assistant, Research, Usage, Settings) are connected to the backend." />;
+}
 
-function Assistant({notify}:{notify:(s:string)=>void}){const [text,setText]=useState("");const [messages,setMessages]=useState([{role:"ai",text:"I can start supported sales, research, task, and blog workflows. External actions always require your approval."}]);const send=()=>{if(!text.trim())return;setMessages([...messages,{role:"owner",text},{role:"ai",text:"I mapped that request to a demo workflow. Review the steps below; nothing external will be executed in Demo Mode."}]);setText("");notify("Demo workflow queued")};return <><Header title="AI Assistant" description="Run supported workflows with GPT, Kimi, or automatic routing." action={<select className="select" style={{width:150}}><option>Auto routing</option><option>GPT</option><option>Kimi</option></select>}/><div className="card split"><aside className="split-aside"><Button kind="primary" className="" onClick={()=>notify("New conversation started")}><Plus size={15}/>New conversation</Button><div style={{marginTop:16}} className="conversation active"><strong>Sales workspace</strong><p className="secondary">Research and outreach planning</p></div><div className="conversation"><strong>Reply summaries</strong><p className="secondary">Yesterday</p></div></aside><div className="split-main"><div className="notice"><ShieldCheck size={15} style={{display:"inline",marginRight:8}}/>Generated suggestions are separate from authorized external actions.</div><div style={{padding:"15px 0"}}>{messages.map((m,i)=><div key={i} className={`message ${m.role==="owner"?"owner":""}`}>{m.text}</div>)}<div className="card pad workflow"><div className="card-head"><strong>Buyer research · Germany</strong><Status value="Running"/></div><div className="progress"><span style={{width:"64%"}}/></div><div className="steps"><div className="step"><Check size={13}/>Validate targeting</div><div className="step"><Check size={13}/>Search public sources</div><div className="step"><Activity size={13}/>Extract evidence and deduplicate</div></div><div className="row"><Button className="sm"><Pause size={13}/>Pause</Button><Button className="sm"><X size={13}/>Cancel</Button></div></div></div><div className="composer"><div className="row" style={{alignItems:"stretch"}}><button className="btn icon-btn" aria-label="Attach file"><Upload size={16}/></button><textarea className="textarea" style={{minHeight:66}} value={text} onChange={e=>setText(e.target.value)} placeholder="Ask Nexa to research buyers, summarize replies, create a task…"/><Button kind="primary" onClick={send}><Send size={16}/></Button></div><div className="quick-actions" style={{margin:"10px 0 0"}}>{["Research garment importers in Germany","Summarize replies from all accounts","Prepare a sustainable manufacturing blog"].map(x=><button className="badge" key={x} onClick={()=>setText(x)}>{x}</button>)}</div></div></div></div></>}
+function useRuns() {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["workflow-runs"],
+    queryFn: () => api.listWorkflowRuns({ limit: 50 }),
+    refetchInterval: (q) => (q.state.data?.some((r) => ACTIVE.includes(r.status)) ? 2500 : 12_000),
+  });
+}
 
-function Research({notify}:{notify:(s:string)=>void}){const [ongoing,setOngoing]=useState(true);const submit=(e:React.FormEvent)=>{e.preventDefault();notify("Research job queued in Demo Mode")};return <><Header title="Buyer Research" description="Find relevant companies from public sources and keep evidence for every result."/><div className="grid grid-2"><form className="card pad" onSubmit={submit}><div className="card-head"><h3>Research setup</h3><Badge tone="brand">Evidence required</Badge></div><div className="form-row"><div className="field"><label>Product</label><input required className="input" defaultValue="Organic cotton T-shirts"/></div><div className="field"><label>Industry</label><input required className="input" defaultValue="Apparel import and wholesale"/></div><div className="field"><label>Target countries</label><input required className="input" defaultValue="Germany, Netherlands"/></div><div className="field"><label>Buyer type</label><select className="select"><option>Importer / wholesaler</option><option>Retail brand</option><option>Distributor</option></select></div></div><div className="tabs" style={{marginTop:15}}><button type="button" className={`tab ${!ongoing?"active":""}`} onClick={()=>setOngoing(false)}>One-time</button><button type="button" className={`tab ${ongoing?"active":""}`} onClick={()=>setOngoing(true)}>Ongoing</button></div><div className="form-row"><div className="field"><label>{ongoing?"Optional result target":"Result target"}</label><input className="input" type="number" placeholder={ongoing?"No fixed daily count":"20"}/></div><div className="field"><label>Max runtime</label><select className="select"><option>45 minutes</option><option>90 minutes</option><option>3 hours</option></select></div><div className="field"><label>Spend limit</label><input className="input" type="number" defaultValue="5"/></div><div className="field"><label>Concurrency</label><input className="input" type="number" defaultValue="2" min="1" max="5"/></div></div><div className="form-actions"><Button type="submit" kind="primary"><Search size={15}/>Start research</Button><span className="secondary">Model: Auto</span></div></form><section className="card pad"><div className="card-head"><h3>Active jobs</h3><Button className="sm"><MoreHorizontal size={15}/></Button></div><strong>EU garment importers</strong><p className="muted" style={{fontSize:13}}>Organic cotton T-shirts · Germany, Netherlands</p><div className="progress" style={{margin:"18px 0 8px"}}><span style={{width:"64%"}}/></div><div className="row" style={{justifyContent:"space-between"}}><span className="secondary">37 pages · 8 candidates · 1 duplicate</span><Status value="Running"/></div><div className="row" style={{marginTop:17}}><Button className="sm"><Pause size={13}/>Pause</Button><Button className="sm">View activity</Button></div></section></div><section className="card" style={{marginTop:16}}><div className="card-head pad" style={{margin:0}}><div><h3>Latest results</h3><span className="secondary">Emails are shown only when found on a cited public page.</span></div><Button kind="primary"><Users size={14}/>Save selected to CRM</Button></div><div className="table-wrap"><table><thead><tr><th>Company</th><th>Country</th><th>Public business email</th><th>Relevance</th><th>Evidence</th></tr></thead><tbody>{leads.slice(0,4).map((l,i)=><tr key={l.company}><td className="primary-cell">{l.company}<span className="secondary">{i===3?"bodensee.example":"company website"}</span></td><td>{l.country}</td><td>{l.email}{i===3&&<span className="secondary">Missing information</span>}</td><td>{i===0?"Strong fit for organic knit basics":"Relevant importer / distributor"}</td><td><a className="link" href="#">{i===3?"Home page":"Contact page"} <ArrowUpRight size={11}/></a></td></tr>)}</tbody></table></div></section></>}
+export function Dashboard() {
+  const api = useApi();
+  const { session, logout } = useApiContext();
+  const [page, setPage] = useState<PageKey>("overview");
+  const [dark, setDark] = useState(false);
+  const [mobile, setMobile] = useState(false);
+  const [toast, setToast] = useState("");
+  const notify = (m: string) => { setToast(m); window.setTimeout(() => setToast(""), 2800); };
+  const go = (p: PageKey) => { setPage(p); setMobile(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const Active = nav.find((n) => n.key === page)!;
+  const owner = session?.owner;
+  const initials = (owner?.name || "O").split(" ").map((p) => p[0]).join("").slice(0, 3).toUpperCase();
 
-function Leads(){const [q,setQ]=useState("");const [status,setStatus]=useState("");const shown=useMemo(()=>leads.filter(l=>(l.company+l.email+l.country).toLowerCase().includes(q.toLowerCase())&&(!status||l.status===status)),[q,status]);return <><Header title="Leads / CRM" description="Companies, contacts, conversations, sources, and follow-up state in one place." action={<Button><ArrowUpRight size={14}/>Export CSV</Button>}/><div className="card"><div className="pad row" style={{justifyContent:"space-between",flexWrap:"wrap"}}><div className="search" style={{width:320,maxWidth:"100%"}}><Search size={16}/><input className="input" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search leads…"/></div><div className="row"><select className="select" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{["New","Contacted","Replied","Interested","Won","Lost"].map(s=><option key={s}>{s}</option>)}</select><select className="select"><option>All countries</option><option>Germany</option><option>Netherlands</option></select></div></div><div className="table-wrap"><table><thead><tr><th>Company</th><th>Country</th><th>Contact</th><th>Product</th><th>Status</th><th>Sender</th><th>Last contact</th><th>Next follow-up</th></tr></thead><tbody>{shown.map(l=><tr key={l.company}><td className="primary-cell">{l.company}</td><td>{l.country}</td><td>{l.email}</td><td>{l.product}</td><td><Status value={l.status}/></td><td>{l.sender}</td><td>{l.last}</td><td>{l.next}</td></tr>)}</tbody></table>{!shown.length&&<Empty title="No leads found" detail="Try another search or clear the filters."/>}</div></div></>}
+  const statusQ = useQuery({ queryKey: ["system-status"], queryFn: () => api.getSystemStatus(), refetchInterval: 15_000 });
+  const hermes = statusQ.data?.hermes;
+  const liveOk = hermes?.research === "connected" && hermes?.writer === "connected";
 
-function InboxPage({notify}:{notify:(s:string)=>void}){const [selected,setSelected]=useState(0);const c=conversations[selected];return <><Header title="Email Inbox" description="Unified conversations across independent mailboxes and aliases." action={<Button><Plus size={14}/>Add Email Account</Button>}/><div className="card split"><aside className="split-aside"><select className="select"><option>Unified inbox · 4 accounts</option><option>sales@aurora.example</option><option>export@aurora.example</option></select><div style={{marginTop:12}}>{conversations.map((x,i)=><div key={x.company} className={`conversation ${i===selected?"active":""}`} onClick={()=>setSelected(i)}><div className="row" style={{justifyContent:"space-between"}}><strong>{x.company}</strong><span className="time">{x.time}</span></div><p className="secondary">{x.subject}</p><p className="secondary">{x.preview}</p></div>)}</div></aside><div className="split-main"><div className="card-head"><div><h3>{c.subject}</h3><span className="secondary">{c.company} · via sales@aurora.example</span></div><Status value={c.classification}/></div><div className="notice"><strong>AI summary:</strong> The buyer is asking for confirmed MOQ and production lead time. Use approved knowledge only; pricing is not requested.</div><div className="message">Hello, we are reviewing your organic cotton range. Could you share your minimum order quantity and current production lead time?</div><div className="card pad" style={{marginTop:20}}><div className="card-head"><h3>Suggested reply</h3><Badge tone="brand">Owner approval required</Badge></div><div className="field"><label>Subject</label><input className="input" defaultValue={`Re: ${c.subject.replace("Re: ","")}`}/></div><div className="field" style={{marginTop:12}}><label>Message</label><textarea className="textarea" defaultValue={"Hello,\n\nThank you for your interest. Our approved MOQ for this product is 1,000 pieces per colour, and the standard production lead time is 45–60 days after order confirmation.\n\nBest regards,"}/></div><div className="form-actions"><Button kind="primary" onClick={()=>notify("Draft submitted for approval — not sent")}><ShieldCheck size={14}/>Submit for approval</Button><Button>Regenerate</Button></div></div></div></div></>}
+  return (
+    <div data-theme={dark ? "dark" : "light"}>
+      <div className="shell">
+        <aside className={`sidebar ${mobile ? "open" : ""}`}>
+          <div className="brand"><div className="brand-mark"><Sparkles size={20} /></div><div><strong>Nexa Sales AI</strong><small>Live workspace</small></div></div>
+          <nav className="nav" aria-label="Main navigation">{nav.map((n) => <button key={n.key} className={page === n.key ? "active" : ""} onClick={() => go(n.key)}><n.icon size={18} />{n.label}</button>)}</nav>
+          <div className="sidebar-foot">
+            <div className="owner"><div className="avatar">{initials}</div><div><strong style={{ fontSize: 13 }}>{owner?.name || "Owner"}</strong><small>{owner?.email}</small></div></div>
+            <Button className="sm" style={{ marginTop: 12, width: "100%" }} onClick={() => void logout()}><LogOut size={14} />Sign out</Button>
+          </div>
+        </aside>
+        <main className="main">
+          <div className={`live-bar ${liveOk ? "" : "warn"}`}>
+            <span>
+              <strong>Live</strong>
+              {hermes ? ` · Hermes research ${hermes.research} · writer ${hermes.writer}` : " · checking Hermes…"}
+              {statusQ.data?.mode === "demo" ? " · backend is labelled demo" : ""}
+            </span>
+            <span>{statusQ.data?.providers.openai.configured ? "OpenAI configured" : "OpenAI not configured"} · {statusQ.data?.providers.kimi.configured ? "Kimi configured" : "Kimi not configured"}</span>
+          </div>
+          <header className="topbar">
+            <div className="row">
+              <button className="btn icon-btn mobile-toggle" onClick={() => setMobile(!mobile)} aria-label="Toggle navigation"><Menu size={18} /></button>
+              <h1>{Active.label}</h1>
+            </div>
+            <div className="top-actions">
+              <button className="btn icon-btn" aria-label="Toggle theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
+            </div>
+          </header>
+          <div className="content">
+            {page === "overview" && <Overview go={go} />}
+            {page === "assistant" && <Assistant notify={notify} />}
+            {page === "research" && <Research notify={notify} />}
+            {page === "leads" && <Unavailable name="Leads / CRM" />}
+            {page === "inbox" && <Unavailable name="Inbox" />}
+            {page === "approvals" && <Unavailable name="Approvals" />}
+            {page === "tasks" && <Unavailable name="Tasks" />}
+            {page === "blog" && <Unavailable name="Blog Studio" />}
+            {page === "knowledge" && <Unavailable name="Business Knowledge" />}
+            {page === "automations" && <Unavailable name="Automations" />}
+            {page === "usage" && <Usage />}
+            {page === "settings" && <SettingsPage notify={notify} />}
+          </div>
+        </main>
+      </div>
+      {mobile && <button onClick={() => setMobile(false)} aria-label="Close navigation" style={{ position: "fixed", inset: 0, border: 0, background: "rgba(0,0,0,.3)", zIndex: 25 }} />}
+      {toast && <div className="toast"><CheckCircle2 size={15} style={{ display: "inline", marginRight: 8 }} />{toast}</div>}
+    </div>
+  );
+}
 
-function Approvals({notify}:{notify:(s:string)=>void}){const [done,setDone]=useState<number[]>([]);const items=[{kind:"Outreach email",title:"Nordwind Textil GmbH",action:"Send from sales@aurora.example to buying@nordwind.example",subject:"Organic cotton knitwear for your 2027 range"},{kind:"Sales reply",title:"Amstel Apparel B.V.",action:"Reply from export@aurora.example",subject:"Re: Available fabric weights"},{kind:"Meeting invitation",title:"Buyer call · Nordwind",action:"Invite two attendees for Nov 20, 15:00 Asia/Dhaka",subject:"Organic cotton sourcing discussion"}];return <><Header title="Approvals" description="Review the exact sender, recipients, content, and schedule before anything external happens."/><div className="notice warning" style={{marginBottom:16}}><AlertTriangle size={15} style={{display:"inline",marginRight:7}}/>Material edits invalidate approval and require a new review.</div><div className="grid">{items.map((a,i)=>!done.includes(i)&&<section className="card pad" key={a.title}><div className="card-head"><div><Badge tone="warn">{a.kind}</Badge><h3 style={{fontSize:17,margin:"10px 0 0"}}>{a.title}</h3></div><span className="time">Created today</span></div><p style={{fontSize:13}}><strong>Exact action:</strong> {a.action}</p><div className="card pad" style={{background:"var(--soft)",boxShadow:"none"}}><strong>{a.subject}</strong><p className="muted" style={{fontSize:13,lineHeight:1.55}}>Hello, I’m reaching out from Aurora Apparels regarding your sourcing requirements. This is reviewable demo content; no message will be delivered.</p></div><div className="form-actions"><Button kind="primary" onClick={()=>{setDone([...done,i]);notify("Approved in Demo Mode — no external action sent")}}><Check size={14}/>Approve</Button><Button>Edit</Button><Button kind="danger" onClick={()=>{setDone([...done,i]);notify("Approval rejected")}}><X size={14}/>Reject</Button></div></section>)}{done.length===items.length&&<div className="card"><Empty title="Approval queue is clear" detail="New external actions will appear here for review."/></div>}</div></>}
+function Overview({ go }: { go: (p: PageKey) => void }) {
+  const { session } = useApiContext();
+  const runsQ = useRuns();
+  const runs = runsQ.data ?? [];
+  const running = runs.filter((r) => ACTIVE.includes(r.status)).length;
+  const failed = runs.filter((r) => r.status === "failed").length;
+  const first = session?.owner?.name?.split(" ")[0] || "there";
+  return (
+    <>
+      <Header title={`Hello, ${first}`} description="Live workspace connected to Hermes. External send/publish still requires a dedicated approval API." action={<Button kind="primary" onClick={() => go("assistant")}><Sparkles size={15} />Ask Nexa</Button>} />
+      <div className="quick-actions">
+        <Button onClick={() => go("research")}><Globe2 size={15} />Find Buyers</Button>
+        <Button onClick={() => go("assistant")}><Mail size={15} />Draft Outreach</Button>
+        <Button onClick={() => go("settings")}><Settings size={15} />Models</Button>
+      </div>
+      <div className="grid grid-5">
+        {([[String(runs.length), "Workflow runs", Activity], [String(running), "In progress", BriefcaseBusiness], [String(failed), "Failed", AlertTriangle, failed ? "warn" : ""], [String(runs.filter((r) => r.status === "completed").length), "Completed", CheckCircle2], [String(runs.filter((r) => r.type === "buyer_research").length), "Buyer research", Globe2]] as [string, string, Icon, string?][]).map(([n, l, I, t]) => (
+          <div className="card metric" key={l}><div className="metric-icon"><I size={17} /></div><strong>{n}</strong><span>{l}</span>{t && <div style={{ marginTop: 8 }}><Badge tone={t}>Attention</Badge></div>}</div>
+        ))}
+      </div>
+      <section className="card pad" style={{ marginTop: 16 }}>
+        <div className="card-head"><h3>Recent workflows</h3><Button kind="ghost" className="sm" onClick={() => go("assistant")}>Open assistant</Button></div>
+        {!runs.length && <Empty title="No workflows yet" detail="Start research or ask the assistant. Results are stored as suggestions until you approve an external action." />}
+        <div className="list">{runs.slice(0, 8).map((r) => <RunRow key={r.id} run={r} />)}</div>
+      </section>
+    </>
+  );
+}
 
-function Tasks({notify}:{notify:(s:string)=>void}){const [view,setView]=useState("list");const [items,setItems]=useState(["Review Nordwind quotation","Confirm Q4 production capacity","Prepare weekly sales summary"]);const [title,setTitle]=useState("");const add=(e:React.FormEvent)=>{e.preventDefault();if(!title.trim())return;setItems([...items,title]);setTitle("");notify("Task created with dashboard reminder")};return <><Header title="Tasks & Calendar" description="Personal work, recurring reminders, and reviewed meeting invitations." action={<div className="row"><Button kind={view==="list"?"primary":""} onClick={()=>setView("list")}>List</Button><Button kind={view==="calendar"?"primary":""} onClick={()=>setView("calendar")}>Calendar</Button></div>}/>{view==="list"?<div className="grid grid-2"><form className="card pad" onSubmit={add}><div className="card-head"><h3>Create task</h3><Badge tone="brand">Asia/Dhaka</Badge></div><div className="field"><label>Task title</label><input required className="input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="What needs to be done?"/></div><div className="form-row" style={{marginTop:12}}><div className="field"><label>Due date</label><input type="datetime-local" className="input"/></div><div className="field"><label>Priority</label><select className="select"><option>Normal</option><option>High</option><option>Urgent</option></select></div><div className="field"><label>Recurrence</label><select className="select"><option>None</option><option>Daily</option><option>Weekly</option><option>Monthly</option></select></div><div className="field"><label>Reminder channel</label><select className="select"><option>Dashboard</option><option>Email</option><option>None</option></select></div></div><Button type="submit" kind="primary" className="" ><Plus size={14}/>Add task</Button></form><section className="card pad"><div className="card-head"><h3>Open tasks</h3><Badge>{items.length}</Badge></div>{items.map((x,i)=><div className="list-item" key={x}><button className="btn icon-btn sm" onClick={()=>setItems(items.filter((_,j)=>j!==i))}><Check size={14}/></button><div className="list-main"><strong>{x}</strong><p>{i===0?"High · Due tomorrow":"Normal · Dashboard reminder"}</p></div></div>)}</section></div>:<div className="card pad"><div className="calendar">{Array.from({length:35},(_,i)=><div className="day" key={i}><strong>{i<5?27+i:i-4}</strong>{i===8&&<span className="event">Buyer follow-up</span>}{i===10&&<span className="event">Nordwind call</span>}</div>)}</div></div>}</>}
+function RunRow({ run }: { run: WorkflowRun }) {
+  return (
+    <div className="list-item">
+      <div className="metric-icon" style={{ margin: 0, width: 31, height: 31 }}><Activity size={14} /></div>
+      <div className="list-main">
+        <strong>{run.title}</strong>
+        <p>{run.progress_message || run.result_summary || run.error?.message || run.type.replaceAll("_", " ")}</p>
+      </div>
+      <Status value={run.status} />
+    </div>
+  );
+}
 
-function Blog({notify}:{notify:(s:string)=>void}){const [title,setTitle]=useState("Why transparent sourcing matters in garment manufacturing");const [body,setBody]=useState("Transparent sourcing helps buyers understand where materials come from, how products are made, and which quality controls protect every order.\n\nAurora Apparels uses approved factory information when communicating with customers.");return <><Header title="Blog Studio" description="Create, edit, and schedule content with publishing approval." action={<Button onClick={()=>notify("Publish approval requested — nothing published")}><ShieldCheck size={14}/>Request publishing</Button>}/><div className="grid" style={{gridTemplateColumns:"280px minmax(0,1fr)"}}><aside className="card pad"><Button kind="primary"><Plus size={14}/>New article</Button><div className="conversation active" style={{marginTop:14}}><strong>Transparent sourcing</strong><p className="secondary">Draft · Updated today</p></div><div className="conversation"><strong>Sustainable knitwear guide</strong><p className="secondary">Pending approval</p></div></aside><section className="card pad"><div className="row" style={{justifyContent:"space-between",marginBottom:16}}><Status value="Draft"/><select className="select" style={{width:130}}><option>Auto</option><option>GPT</option><option>Kimi</option></select></div><div className="field"><label>Article title</label><input className="input" value={title} onChange={e=>setTitle(e.target.value)}/></div><div className="form-row" style={{marginTop:12}}><div className="field"><label>SEO title</label><input className="input" defaultValue="Transparent Garment Sourcing: A Buyer’s Guide"/></div><div className="field"><label>Keywords</label><input className="input" defaultValue="garment sourcing, transparency, manufacturing"/></div></div><div className="field" style={{marginTop:12}}><label>Meta description</label><input className="input" defaultValue="Learn how transparent sourcing creates confidence, quality, and long-term buyer relationships."/></div><div className="field" style={{marginTop:12}}><label>Article</label><textarea className="textarea" style={{minHeight:260}} value={body} onChange={e=>setBody(e.target.value)}/></div><div className="form-actions"><Button kind="primary" onClick={()=>notify("Draft saved locally in Demo Mode")}>Save draft</Button><Button><Sparkles size={14}/>Generate outline</Button><Button onClick={()=>notify("CMS is disconnected; no upload attempted")}><Upload size={14}/>Upload CMS draft</Button></div></section></div></>}
+function Assistant({ notify }: { notify: (s: string) => void }) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const runsQ = useRuns();
+  const runs = runsQ.data ?? [];
+  const [text, setText] = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const current = runs.find((r) => r.id === selected) ?? runs[0];
+  const start = useMutation({
+    mutationFn: (input: string) => {
+      const type = inferWorkflow(input);
+      return api.startWorkflowRun({ type, title: input.slice(0, 80), input });
+    },
+    onSuccess: (run) => {
+      setSelected(run.id);
+      setText("");
+      void qc.invalidateQueries({ queryKey: ["workflow-runs"] });
+      notify("Workflow queued on Hermes");
+    },
+    onError: (err) => notify(errorMessage(err)),
+  });
+  const cancel = useMutation({
+    mutationFn: (id: number) => api.cancelWorkflowRun(id),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["workflow-runs"] }); notify("Cancel requested"); },
+    onError: (err) => notify(errorMessage(err)),
+  });
+  const retry = useMutation({
+    mutationFn: (id: number) => api.retryWorkflowRun(id),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["workflow-runs"] }); notify("Retry queued"); },
+    onError: (err) => notify(errorMessage(err)),
+  });
 
-function Knowledge({notify}:{notify:(s:string)=>void}){const sections=["Factory profile","Products & specifications","Pricing & currency","Minimum order quantities","Production capacity","Delivery times","Payment terms","Certifications","Approved sales statements"];return <><Header title="Business Knowledge" description="Only approved facts are used in buyer-facing suggestions." action={<Button onClick={()=>notify("Document picker opened in a connected backend")}><Upload size={14}/>Upload document</Button>}/><div className="notice warning" style={{marginBottom:16}}><AlertTriangle size={15} style={{display:"inline",marginRight:7}}/>3 missing facts: sweatshirt pricing, current dyeing capacity, and winter delivery commitments. The assistant will ask instead of guessing.</div><div className="grid grid-3">{sections.map((s,i)=><section className="card pad" key={s}><div className="card-head"><div className="metric-icon" style={{margin:0}}><FileText size={15}/></div>{i<6?<Badge tone="good">Approved</Badge>:<Badge tone="warn">Needs review</Badge>}</div><h3 style={{margin:"0 0 7px"}}>{s}</h3><p className="muted" style={{fontSize:12,minHeight:34}}>{i===0?"Aurora Apparels Ltd. · Dhaka, Bangladesh":i===7?"OEKO-TEX document awaiting owner approval":"Structured business information"}</p><div className="row" style={{justifyContent:"space-between"}}><span className="time">Updated Nov {10+i}</span><Button className="sm">Edit</Button></div></section>)}</div></>}
+  return (
+    <>
+      <Header title="AI Assistant" description="Requests run on Hermes. Output is a suggestion — nothing is emailed or published from here." />
+      <div className="card split">
+        <aside className="split-aside">
+          <p className="secondary" style={{ margin: "0 0 10px" }}>{runs.length} runs</p>
+          {runs.map((r) => (
+            <div key={r.id} className={`conversation ${current?.id === r.id ? "active" : ""}`} onClick={() => setSelected(r.id)}>
+              <strong>{r.title}</strong>
+              <p className="secondary">{r.type.replaceAll("_", " ")} · {r.status}</p>
+            </div>
+          ))}
+          {!runs.length && <p className="muted">No runs yet.</p>}
+        </aside>
+        <div className="split-main">
+          <div className="notice">Hermes executes the workflow. Review the result before any external action.</div>
+          {current ? (
+            <div className="card pad workflow" style={{ marginTop: 16 }}>
+              <div className="card-head"><strong>{current.title}</strong><Status value={current.status} /></div>
+              {current.progress != null && <div className="progress"><span style={{ width: `${current.progress}%` }} /></div>}
+              <p className="muted" style={{ fontSize: 13 }}>{current.progress_message}</p>
+              {current.steps.map((s, i) => <div className="step" key={i}>{s.label} · {s.status}</div>)}
+              {current.result_summary && <div className="message">{current.result_summary}</div>}
+              {current.error && <div className="notice danger">{current.error.message}{current.error.recovery ? ` ${current.error.recovery}` : ""}</div>}
+              <div className="row">
+                {current.can_cancel && <Button className="sm" onClick={() => cancel.mutate(current.id)}><X size={13} />Cancel</Button>}
+                {current.can_retry && <Button className="sm" onClick={() => retry.mutate(current.id)}>Retry</Button>}
+              </div>
+            </div>
+          ) : <Empty title="Ask Hermes" detail="Describe a research, draft, or summary task." />}
+          <div className="composer">
+            <div className="row" style={{ alignItems: "stretch" }}>
+              <textarea className="textarea" style={{ minHeight: 66 }} value={text} onChange={(e) => setText(e.target.value)} placeholder="Research garment importers in Germany…" />
+              <Button kind="primary" disabled={start.isPending || !text.trim()} onClick={() => start.mutate(text.trim())}>{start.isPending ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
-function Automations({notify}:{notify:(s:string)=>void}){const base=[{n:"Ongoing buyer research",s:"Every 12 hours",on:true,out:false},{n:"Email follow-ups",s:"Weekdays · 09:00–17:00",on:true,out:true},{n:"Incoming reply analysis",s:"Every 10 minutes",on:true,out:false},{n:"Daily activity summary",s:"Daily · 18:00 Asia/Dhaka",on:true,out:false},{n:"Recurring assistant tasks",s:"Schedule-based",on:false,out:false},{n:"Blog publishing schedule",s:"Approval required",on:false,out:true}];const [items,setItems]=useState(base);const [paused,setPaused]=useState(false);return <><Header title="Automations" description="One scheduling authority, visible limits, stop conditions, and execution history." action={<Button kind="danger" onClick={()=>{setPaused(!paused);notify(paused?"Outgoing actions resumed":"All outgoing actions paused")}}>{paused?<Play size={14}/>:<Pause size={14}/>} {paused?"Resume outgoing actions":"Pause all outgoing actions"}</Button>}/>{paused&&<div className="notice danger" style={{marginBottom:16}}><Pause size={15} style={{display:"inline",marginRight:7}}/>Emergency pause is active. New outgoing email and publishing work will remain queued.</div>}<div className="grid grid-3">{items.map((a,i)=><section className="card pad" key={a.n}><div className="card-head"><div className="metric-icon" style={{margin:0}}><Zap size={15}/></div><button className={`switch ${a.on?"on":""}`} onClick={()=>setItems(items.map((x,j)=>j===i?{...x,on:!x.on}:x))} aria-label={`Toggle ${a.n}`}><span/></button></div><h3>{a.n}</h3><p className="muted" style={{fontSize:12}}>{a.s}</p><div className="list-item"><Clock3 size={14}/><div className="list-main"><span className="secondary">Last run</span><strong>{a.on?"Today, 14:10":"Not scheduled"}</strong></div></div><div className="row" style={{justifyContent:"space-between",marginTop:12}}><Status value={a.on?"Active":"Paused"}/>{a.out&&<Badge tone="warn">External action</Badge>}</div></section>)}</div></>}
+function Research({ notify }: { notify: (s: string) => void }) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const runsQ = useRuns();
+  const jobs = (runsQ.data ?? []).filter((r) => r.type === "buyer_research" || r.type === "general_research");
+  const [product, setProduct] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [countries, setCountries] = useState("");
+  const start = useMutation({
+    mutationFn: () => {
+      const input = `Product: ${product}\nIndustry: ${industry}\nTarget countries: ${countries}\nFind relevant business buyers from public sources. Do not invent email addresses.`;
+      return api.startWorkflowRun({ type: "buyer_research", title: `${product} · ${countries}`, input });
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["workflow-runs"] }); notify("Buyer research queued on Hermes"); },
+    onError: (err) => notify(errorMessage(err)),
+  });
+  const submit = (e: FormEvent) => { e.preventDefault(); start.mutate(); };
 
-function Usage(){return <><Header title="Usage & Costs" description="Application estimates are separate from actual provider invoices."/><div className="grid grid-3"><div className="card metric"><div className="metric-icon"><Bot size={17}/></div><strong>$42.18</strong><span>GPT · month estimate</span><p className="secondary">2.4M input · 318K output tokens</p></div><div className="card metric"><div className="metric-icon"><Sparkles size={17}/></div><strong>$18.72</strong><span>Kimi · month estimate</span><p className="secondary">1.8M input · 211K output tokens</p></div><div className="card metric"><div className="metric-icon"><Search size={17}/></div><strong>$11.40</strong><span>Search & extraction estimate</span><p className="secondary">612 searches · 1,094 pages</p></div></div><div className="grid grid-2" style={{marginTop:16}}><section className="card pad"><div className="card-head"><h3>Budget allocation</h3><strong>$72.30 / $250</strong></div><div className="progress"><span style={{width:"29%"}}/></div><div className="row" style={{justifyContent:"space-between",marginTop:9}}><span className="secondary">Monthly remaining: $177.70</span><span className="secondary">Daily: $3.84 / $15</span></div><div className="notice" style={{marginTop:16}}>10% in-flight allowance is configured. New work pauses when the application budget is reached.</div></section><section className="card pad"><div className="card-head"><h3>Workflow breakdown</h3><span className="secondary">This month</span></div>{[["Buyer research","$29.14","41 runs"],["Outreach drafts","$17.66","32 runs"],["Reply analysis","$14.21","89 runs"],["Blog writing","$8.37","7 runs"]].map(x=><div className="list-item" key={x[0]}><div className="list-main"><strong>{x[0]}</strong><p>{x[2]}</p></div><strong>{x[1]}</strong></div>)}</section></div><section className="card" style={{marginTop:16}}><div className="card-head pad" style={{margin:0}}><div><h3>Pricing configuration</h3><span className="secondary">No prices are invented; update from provider documentation.</span></div><Button>Edit pricing</Button></div><div className="table-wrap"><table><thead><tr><th>Provider</th><th>Model ID</th><th>Input / 1M</th><th>Output / 1M</th><th>Last updated</th></tr></thead><tbody><tr><td>OpenAI</td><td>Configured server-side model</td><td>Configured</td><td>Configured</td><td>Nov 12, 2026</td></tr><tr><td>Kimi</td><td>Configured server-side model</td><td>Configured</td><td>Configured</td><td>Nov 12, 2026</td></tr></tbody></table></div></section></>}
+  return (
+    <>
+      <Header title="Buyer Research" description="Hermes searches public sources. Emails appear only if they are found on a cited page." />
+      <div className="grid grid-2">
+        <form className="card pad" onSubmit={submit}>
+          <div className="card-head"><h3>Research setup</h3><Badge tone="brand">Live Hermes</Badge></div>
+          <div className="form-row">
+            <div className="field"><label>Product</label><input required className="input" value={product} onChange={(e) => setProduct(e.target.value)} /></div>
+            <div className="field"><label>Industry</label><input required className="input" value={industry} onChange={(e) => setIndustry(e.target.value)} /></div>
+            <div className="field"><label>Target countries</label><input required className="input" value={countries} onChange={(e) => setCountries(e.target.value)} /></div>
+          </div>
+          <div className="form-actions"><Button type="submit" kind="primary" disabled={start.isPending}><Search size={15} />Start research</Button></div>
+        </form>
+        <section className="card pad">
+          <div className="card-head"><h3>Jobs</h3></div>
+          {!jobs.length && <Empty title="No research jobs" detail="Submit the form to queue a Hermes run." />}
+          <div className="list">{jobs.map((r) => <RunRow key={r.id} run={r} />)}</div>
+        </section>
+      </div>
+      {jobs[0]?.result_summary && (
+        <section className="card pad" style={{ marginTop: 16 }}>
+          <div className="card-head"><h3>Latest result</h3><Status value={jobs[0].status} /></div>
+          <div className="message" style={{ maxWidth: "100%" }}>{jobs[0].result_summary}</div>
+        </section>
+      )}
+    </>
+  );
+}
 
-function SettingsPage({notify}:{notify:(s:string)=>void}){const tabs=["Profile","Email accounts","AI providers","Integrations","Sending & limits","Suppression","Notifications","Budget"];const [tab,setTab]=useState("Profile");return <><Header title="Settings" description="Connections, routing, safeguards, and owner preferences."/><div className="tabs">{tabs.map(t=><button key={t} className={`tab ${tab===t?"active":""}`} onClick={()=>setTab(t)}>{t}</button>)}</div>{tab==="Profile"&&<section className="card pad"><div className="card-head"><h3>Owner profile</h3><Badge tone="good">Single owner</Badge></div><div className="form-row"><div className="field"><label>Name</label><input className="input" defaultValue="Nahin Meem Alifa"/></div><div className="field"><label>Email</label><input className="input" defaultValue="owner@aurora.example"/></div><div className="field"><label>Timezone</label><select className="select"><option>Asia/Dhaka</option><option>Europe/Berlin</option></select></div><div className="field"><label>Currency</label><select className="select"><option>USD</option><option>BDT</option><option>EUR</option></select></div></div><Button kind="primary" onClick={()=>notify("Profile changes saved in Demo Mode")}>Save changes</Button></section>}{tab==="Email accounts"&&<section className="card"><div className="card-head pad" style={{margin:0}}><div><h3>Email accounts</h3><span className="secondary">Aliases are identified separately from independent mailboxes.</span></div><Button><Plus size={14}/>Add account</Button></div><div className="table-wrap"><table><thead><tr><th>Address</th><th>Provider</th><th>Type</th><th>Status</th><th>Daily limit</th></tr></thead><tbody>{[["sales@aurora.example","Google","Mailbox","Connected","40"],["export@aurora.example","Microsoft","Mailbox","Connected","35"],["info@aurora.example","IMAP/SMTP","Mailbox","Needs reauth","25"],["maruf@aurora.example","Google","Alias","Connected","—"]].map(x=><tr key={x[0]}><td className="primary-cell">{x[0]}</td><td>{x[1]}</td><td>{x[2]}</td><td><Status value={x[3]}/></td><td>{x[4]}</td></tr>)}</tbody></table></div></section>}{tab==="AI providers"&&<div className="grid grid-2">{[["OpenAI / GPT",true],["Moonshot / Kimi",false]].map(([n,c])=><section className="card pad" key={String(n)}><div className="card-head"><h3>{String(n)}</h3><Status value={c?"Connected":"Disconnected"}/></div><p className="muted" style={{fontSize:13}}>API key: {c?"•••••••••••• configured server-side":"Not configured"}</p><Button onClick={()=>notify("Provider test requires the production backend")}>Test connection</Button></section>)}</div>}{!['Profile','Email accounts','AI providers'].includes(tab)&&<section className="card pad"><div className="card-head"><h3>{tab}</h3><Badge tone="brand">Configurable</Badge></div><div className="notice"><ShieldCheck size={15} style={{display:"inline",marginRight:8}}/>Sensitive credentials are stored server-side and are never returned to the browser.</div><div className="form-row" style={{marginTop:16}}><div className="field"><label>Daily limit</label><input className="input" defaultValue="15"/></div><div className="field"><label>Monthly limit</label><input className="input" defaultValue="250"/></div></div><Button kind="primary" onClick={()=>notify(`${tab} settings saved in Demo Mode`)}>Save settings</Button></section>}</>}
+function Usage() {
+  const api = useApi();
+  const budgetQ = useQuery({ queryKey: ["budget-status"], queryFn: () => api.getBudgetStatus() });
+  const modelsQ = useQuery({ queryKey: ["models"], queryFn: () => api.listModelPricing() });
+  const b = budgetQ.data;
+  const dailyPct = b?.daily.limit ? Math.min(100, (b.daily.spent / b.daily.limit) * 100) : 0;
+  return (
+    <>
+      <Header title="Usage & Costs" description="Application estimates from Hermes usage records. Not a provider invoice." />
+      <div className="grid grid-3">
+        <div className="card metric"><div className="metric-icon"><Bot size={17} /></div><strong>{b ? `${b.currency} ${b.daily.spent.toFixed(2)}` : "—"}</strong><span>Today (estimate)</span></div>
+        <div className="card metric"><div className="metric-icon"><CircleDollarSign size={17} /></div><strong>{b ? `${b.currency} ${b.monthly.spent.toFixed(2)}` : "—"}</strong><span>This month (estimate)</span></div>
+        <div className="card metric"><div className="metric-icon"><AlertTriangle size={17} /></div><strong>{b?.unpriced_records_this_month ?? 0}</strong><span>Unpriced records</span></div>
+      </div>
+      <section className="card pad" style={{ marginTop: 16 }}>
+        <div className="card-head"><h3>Daily budget</h3><strong>{b?.daily.limit == null ? "No daily cap" : `${b.daily.spent.toFixed(2)} / ${b.daily.limit}`}</strong></div>
+        <div className="progress"><span style={{ width: `${dailyPct}%` }} /></div>
+      </section>
+      <section className="card" style={{ marginTop: 16 }}>
+        <div className="card-head pad" style={{ margin: 0 }}><h3>Configured models</h3></div>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Provider</th><th>Model</th><th>Enabled</th><th>Input / 1M</th><th>Output / 1M</th></tr></thead>
+            <tbody>
+              {(modelsQ.data ?? []).map((m) => (
+                <tr key={m.id}><td>{m.provider}</td><td className="primary-cell">{m.label || m.model_id}</td><td>{m.enabled ? "Yes" : "No"}</td><td>{m.input_price_per_mtok ?? "—"}</td><td>{m.output_price_per_mtok ?? "—"}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          {!modelsQ.data?.length && <Empty title="No models" detail="Add a model in Settings before running Hermes workflows." />}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function SettingsPage({ notify }: { notify: (s: string) => void }) {
+  const api = useApi();
+  const { session } = useApiContext();
+  const qc = useQueryClient();
+  const statusQ = useQuery({ queryKey: ["system-status"], queryFn: () => api.getSystemStatus() });
+  const modelsQ = useQuery({ queryKey: ["models"], queryFn: () => api.listModelPricing() });
+  const [provider, setProvider] = useState<"openai" | "kimi">("openai");
+  const [modelId, setModelId] = useState("");
+  const [label, setLabel] = useState("");
+  const add = useMutation({
+    mutationFn: () => api.createModelPricing({
+      provider, model_id: modelId.trim(), label: label.trim() || modelId.trim(), enabled: true,
+      input_price_per_mtok: null, output_price_per_mtok: null, cached_input_price_per_mtok: null,
+      currency: "USD", pricing_updated_at: null, pricing_source: "",
+    } satisfies ModelPricingInput),
+    onSuccess: () => {
+      setModelId(""); setLabel("");
+      void qc.invalidateQueries({ queryKey: ["models"] });
+      notify("Model saved");
+    },
+    onError: (err) => notify(errorMessage(err)),
+  });
+
+  const st = statusQ.data;
+  return (
+    <>
+      <Header title="Settings" description="Owner session, Hermes health, and models used for live runs." />
+      <section className="card pad">
+        <div className="card-head"><h3>Owner</h3><Badge tone="good">Signed in</Badge></div>
+        <p>{session?.owner?.name}</p>
+        <p className="muted">{session?.owner?.email}</p>
+      </section>
+      <div className="grid grid-2" style={{ marginTop: 16 }}>
+        <section className="card pad">
+          <div className="card-head"><h3>Hermes</h3><Status value={st?.hermes.research ?? "unknown"} /></div>
+          <p className="muted" style={{ fontSize: 13 }}>Pin {st?.hermes.version_pin} · research {st?.hermes.research} · writer {st?.hermes.writer}</p>
+        </section>
+        <section className="card pad">
+          <div className="card-head"><h3>Providers</h3></div>
+          <p>OpenAI: {st?.providers.openai.configured ? "server key present" : "not configured in Hermes"}</p>
+          <p>Kimi: {st?.providers.kimi.configured ? "server key present" : "not configured in Hermes"}</p>
+        </section>
+      </div>
+      <section className="card pad" style={{ marginTop: 16 }}>
+        <div className="card-head"><h3>Add model</h3></div>
+        <div className="form-row">
+          <div className="field"><label>Provider</label><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as "openai" | "kimi")}><option value="openai">OpenAI</option><option value="kimi">Kimi</option></select></div>
+          <div className="field"><label>Model ID</label><input className="input" value={modelId} onChange={(e) => setModelId(e.target.value)} placeholder="gpt-4.1-mini" required /></div>
+          <div className="field"><label>Label</label><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="GPT fast" /></div>
+        </div>
+        <Button kind="primary" className="" disabled={add.isPending || !modelId.trim()} onClick={() => add.mutate()} style={{ marginTop: 14 }}><Plus size={14} />Save model</Button>
+        <div className="table-wrap" style={{ marginTop: 16 }}>
+          <table>
+            <thead><tr><th>Label</th><th>Provider</th><th>Model ID</th></tr></thead>
+            <tbody>{(modelsQ.data ?? []).map((m) => <tr key={m.id}><td>{m.label}</td><td>{m.provider}</td><td>{m.model_id}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}

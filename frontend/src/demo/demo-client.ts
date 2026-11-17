@@ -353,6 +353,39 @@ export class DemoApiClient implements ApiClient {
     await wait(100); this.tick();
     return clone(this.s.runs.map((r) => r.run).filter((r) => !params?.status || r.status === params.status).slice(0, params?.limit ?? 50));
   }
+  async startWorkflowRun(input: {
+    type: T.WorkflowType;
+    title?: string;
+    input: string;
+    model_config_id?: T.ID | null;
+    params?: Record<string, unknown>;
+  }) {
+    await wait();
+    const run: T.WorkflowRun = {
+      id: Date.now(),
+      type: input.type,
+      title: input.title || input.type,
+      status: "queued",
+      progress: 0,
+      steps: [],
+      result_summary: null,
+      result_links: [],
+      sources: [],
+      error: null,
+      served_by: null,
+      approval_ids: [],
+      can_pause: false,
+      can_resume: false,
+      can_cancel: true,
+      can_retry: false,
+      estimated_cost: null,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    this.s.runs.unshift({ run, plan: [], startedMs: Date.now(), pausedAtMs: null, effect: null, args: {}, applied: false });
+    this.save();
+    return clone(run);
+  }
   private rs(id: T.ID) { return this.s.runs.find((r) => r.run.id === id) ?? this.notFound("Workflow run"); }
   async getWorkflowRun(id: T.ID) { await wait(80); this.tick(); return clone(this.rs(id).run); }
   async pauseWorkflowRun(id: T.ID) {
@@ -1026,6 +1059,16 @@ export class DemoApiClient implements ApiClient {
   async getUnitPrices() { await wait(); return clone(this.s.unitPrices); }
   async updateUnitPrices(input: T.UnitPrices) { await wait(); this.s.unitPrices = { ...clone(input), updated_at: nowIso() }; this.save(); return clone(this.s.unitPrices); }
   async getBudget() { await wait(); return clone(this.s.budget); }
+  async getBudgetStatus() {
+    await wait();
+    return {
+      currency: this.s.budget.currency,
+      inflight_allowance_pct: this.s.budget.inflight_allowance_pct,
+      daily: { limit: this.s.budget.daily, spent: 0 },
+      monthly: { limit: this.s.budget.monthly, spent: 0 },
+      unpriced_records_this_month: 0,
+    };
+  }
   async updateBudget(input: T.BudgetSettings) {
     await wait();
     if (input.daily != null && input.monthly != null && input.daily > input.monthly) throw new ApiError("Please check the highlighted fields.", 422, "validation", { daily: "Daily budget cannot exceed the monthly budget." });

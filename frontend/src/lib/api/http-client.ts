@@ -120,6 +120,13 @@ export class HttpApiClient implements ApiClient {
   // overview & workflows
   getOverview = () => this.get<T.Overview>("/overview");
   listWorkflowRuns = (p?: { status?: T.WorkflowStatus | ""; limit?: number }) => this.get<T.WorkflowRun[]>("/workflow-runs", p);
+  startWorkflowRun = (input: {
+    type: T.WorkflowType;
+    title?: string;
+    input: string;
+    model_config_id?: T.ID | null;
+    params?: Record<string, unknown>;
+  }) => this.post<T.WorkflowRun>("/workflow-runs", input);
   getWorkflowRun = (id: T.ID) => this.get<T.WorkflowRun>(`/workflow-runs/${id}`);
   pauseWorkflowRun = (id: T.ID) => this.post<T.WorkflowRun>(`/workflow-runs/${id}/pause`);
   resumeWorkflowRun = (id: T.ID) => this.post<T.WorkflowRun>(`/workflow-runs/${id}/resume`);
@@ -232,6 +239,13 @@ export class HttpApiClient implements ApiClient {
   getUnitPrices = () => this.get<T.UnitPrices>("/usage/unit-prices");
   updateUnitPrices = (input: T.UnitPrices) => this.put<T.UnitPrices>("/usage/unit-prices", input);
   getBudget = () => this.get<T.BudgetSettings>("/usage/budget");
+  getBudgetStatus = () => this.get<{
+    currency: string;
+    inflight_allowance_pct: number;
+    daily: { limit: number | null; spent: number };
+    monthly: { limit: number | null; spent: number };
+    unpriced_records_this_month: number;
+  }>("/usage/budget-status");
   updateBudget = (input: T.BudgetSettings) => this.put<T.BudgetSettings>("/usage/budget", input);
 
   // settings
