@@ -1,12 +1,11 @@
 import type { NextConfig } from "next";
 
-// The browser only ever talks to this Next.js origin. Requests to /api/* are proxied server-side to the
-// FastAPI backend, so session cookies stay same-origin and no provider secret is ever shipped to the client.
 const backend = process.env.BACKEND_URL ?? "http://localhost:8000";
+const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
+const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1] ?? "AI-Sales-Automation-Multi-Skill-Virtual-Assistant";
+const pagesPath = `/${repositoryName}`;
 
-const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  poweredByHeader: false,
+const serverConfig: NextConfig = {
   output: "standalone",
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];
@@ -24,6 +23,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+};
+
+const pagesConfig: NextConfig = {
+  output: "export",
+  basePath: pagesPath,
+  assetPrefix: pagesPath,
+  trailingSlash: true,
+  images: { unoptimized: true },
+};
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  poweredByHeader: false,
+  ...(isGitHubPages ? pagesConfig : serverConfig),
 };
 
 export default nextConfig;
