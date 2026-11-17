@@ -1,0 +1,28 @@
+
+> sales-assistant-dashboard@0.1.0 dev
+> next dev
+
+▲ Next.js 16.4.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.10.244:3000
+✓ Ready in 512ms
+✓ Running next.config.ts took 31ms
+Creating turbopack project {
+  dir: 'E:\\My creation\\AI-Sales-Automation-Multi-Skill-Virtual-Assistant\\frontend',
+  testMode: true
+}
+
+✓ Generated AGENTS.md for AI agents. Set `agentRules: false` in next.config to disable.
+ GET / 200 in 245ms (next.js: 139ms, application-code: 106ms)
+ GET / 200 in 29ms (next.js: 1.1ms, application-code: 28ms)
+ GET / 200 in 31ms (next.js: 1.1ms, application-code: 30ms)
+ GET / 200 in 30ms (next.js: 1.9ms, application-code: 28ms)
+✓ Compiled in 46ms
+ GET / 200 in 25ms (next.js: 0.8ms, application-code: 24ms)
+ GET / 200 in 28ms (next.js: 0.7ms, application-code: 28ms)
+ GET / 200 in 27ms (next.js: 0.8ms, application-code: 27ms)
+ GET / 200 in 29ms (next.js: 0.7ms, application-code: 29ms)
+ GET / 200 in 40ms (next.js: 0.9ms, application-code: 39ms)
+ GET / 200 in 36ms (next.js: 0.8ms, application-code: 35ms)
+ GET / 200 in 27ms (next.js: 1.0ms, application-code: 26ms)
+✓ Compiled in 49ms

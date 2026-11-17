@@ -865,7 +865,7 @@ export class DemoApiClient implements ApiClient {
     const label = { outline: "outline", article: "article", seo: "SEO title & meta description", captions: "social captions" }[part];
     return this.startRun("blog_generate", `Write ${label}: ${p.title || p.topic}`, [{ label: "Load approved business facts", ms: 1200 }, { label: `Write ${label}`, ms: part === "article" ? 5000 : 2500 }], "blog_part", { post_id: id, part }, model);
   }
-  async uploadBlogDraftToCms(id: T.ID) {
+  async uploadBlogDraftToCms(id: T.ID): Promise<T.BlogPost> {
     await wait(600);
     void this.post(id);
     throw new ApiError("Demo Mode cannot upload to a real CMS. Connect WordPress through a backend to upload drafts.", 400, "demo_unsupported");
