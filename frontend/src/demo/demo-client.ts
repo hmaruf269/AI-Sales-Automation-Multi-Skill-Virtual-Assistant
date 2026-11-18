@@ -301,6 +301,7 @@ export class DemoApiClient implements ApiClient {
       providers: {
         openai: { configured: false, enabled_models: this.s.pricing.filter((p) => p.provider === "openai" && p.enabled).length },
         kimi: { configured: false, enabled_models: this.s.pricing.filter((p) => p.provider === "kimi" && p.enabled).length },
+        gemini: { configured: false, enabled_models: this.s.pricing.filter((p) => p.provider === "gemini" && p.enabled).length },
       },
     };
   }
@@ -1005,8 +1006,8 @@ export class DemoApiClient implements ApiClient {
     };
     const monthRows = this.s.usage.filter((u) => u.at >= month);
     unpriced += monthRows.filter((u) => costOf(u) == null).length;
-    const providers = (["openai", "kimi"] as T.ProviderKey[]).map((key) => ({
-      key, label: key === "openai" ? "OpenAI (GPT)" : "Kimi (Moonshot AI)", configured: this.s.providers.find((p) => p.key === key)?.configured ?? false,
+    const providers = (["openai", "kimi", "gemini"] as T.ProviderKey[]).map((key) => ({
+      key, label: key === "openai" ? "OpenAI (GPT)" : key === "kimi" ? "Kimi (Moonshot AI)" : "Gemini (free tier)", configured: this.s.providers.find((p) => p.key === key)?.configured ?? false,
       today: agg(monthRows.filter((u) => u.provider === key && u.at >= day)), month: agg(monthRows.filter((u) => u.provider === key)),
     }));
     const svcLabels = { search: ["Web search", "searches"], extraction: ["Page extraction", "pages"], verification: ["Email verification", "checks"], browser: ["Browser automation", "sessions"] } as const;

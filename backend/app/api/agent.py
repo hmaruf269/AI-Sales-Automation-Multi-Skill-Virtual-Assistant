@@ -33,7 +33,7 @@ class RunInput(BaseModel):
 
 
 class ModelInput(BaseModel):
-    provider: Literal["openai", "kimi"]
+    provider: Literal["openai", "kimi", "gemini"]
     model_id: str = Field(min_length=1, max_length=200)
     label: str = ""
     enabled: bool = True
@@ -97,6 +97,7 @@ def system_status():
         "providers": {
             "openai": {"configured": s.openai_configured, "enabled_models": 0},
             "kimi": {"configured": s.kimi_configured, "enabled_models": 0},
+            "gemini": {"configured": s.gemini_configured, "enabled_models": 0},
         },
     }
 

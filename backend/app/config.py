@@ -35,8 +35,11 @@ class Settings(BaseSettings):
     # Which providers have server-side keys present in the Hermes containers.
     openai_configured: bool = False
     kimi_configured: bool = False
+    gemini_configured: bool = False
+    gemini_default_model: str = "gemini-3.5-flash-lite"
     hermes_openai_provider: str = "openai-api"
     hermes_kimi_provider: str = "kimi-coding"
+    hermes_gemini_provider: str = "gemini"
 
     google_client_id: str = ""
     google_client_secret: str = ""

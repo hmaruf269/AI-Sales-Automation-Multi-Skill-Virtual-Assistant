@@ -62,17 +62,17 @@ def set_client(agent: str, client: HermesClient | None) -> None:
 
 def provider_configured(provider: str) -> bool:
     s = get_settings()
-    return {"openai": s.openai_configured, "kimi": s.kimi_configured}.get(provider, False)
+    return {"openai": s.openai_configured, "kimi": s.kimi_configured, "gemini": s.gemini_configured}.get(provider, False)
 
 
 def hermes_provider_id(provider: str) -> str:
     s = get_settings()
-    return {"openai": s.hermes_openai_provider, "kimi": s.hermes_kimi_provider}[provider]
+    return {"openai": s.hermes_openai_provider, "kimi": s.hermes_kimi_provider, "gemini": s.hermes_gemini_provider}[provider]
 
 
 def _app_provider(hermes_provider: str, default: str) -> str:
     s = get_settings()
-    return {s.hermes_openai_provider: "openai", s.hermes_kimi_provider: "kimi"}.get(hermes_provider, default)
+    return {s.hermes_openai_provider: "openai", s.hermes_kimi_provider: "kimi", s.hermes_gemini_provider: "gemini"}.get(hermes_provider, default)
 
 
 def resolve_models(db: Session, workflow_type: str, explicit_model_id: int | None = None) -> list[ModelConfig]:

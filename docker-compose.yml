@@ -40,6 +40,8 @@ services:
       API_SERVER_PORT: 8642
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?Set HERMES_API_SERVER_KEY in .env}
       API_SERVER_CORS_ORIGINS: http://localhost:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GEMINI_API_KEY:-}
     volumes:
       - hermes_data:/opt/data
     ports:
@@ -71,6 +73,8 @@ services:
       HERMES_VERSION_PIN: v0.23.2
       OPENAI_CONFIGURED: ${OPENAI_CONFIGURED:-false}
       KIMI_CONFIGURED: ${KIMI_CONFIGURED:-false}
+      GEMINI_CONFIGURED: ${GEMINI_CONFIGURED:-false}
+      GEMINI_DEFAULT_MODEL: ${GEMINI_DEFAULT_MODEL:-gemini-3.5-flash-lite}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -95,6 +99,8 @@ services:
       HERMES_WRITER_KEY: ${HERMES_API_SERVER_KEY}
       OPENAI_CONFIGURED: ${OPENAI_CONFIGURED:-false}
       KIMI_CONFIGURED: ${KIMI_CONFIGURED:-false}
+      GEMINI_CONFIGURED: ${GEMINI_CONFIGURED:-false}
+      GEMINI_DEFAULT_MODEL: ${GEMINI_DEFAULT_MODEL:-gemini-3.5-flash-lite}
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}

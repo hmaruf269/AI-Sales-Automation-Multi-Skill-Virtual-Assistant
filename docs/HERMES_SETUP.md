@@ -30,14 +30,15 @@ The Docker build is pinned to the official `v0.23.2` source tag.
    ```
 
 4. In the Hermes setup wizard, configure the desired OpenAI and/or Kimi provider credentials and web tools.
-5. Set `OPENAI_CONFIGURED=true` and/or `KIMI_CONFIGURED=true` in `.env` only after Hermes is configured.
-6. Start the stack:
+5. For the free Gemini option, create a key in Google AI Studio and set `GEMINI_API_KEY` plus `GEMINI_CONFIGURED=true` in `.env`. Hermes receives that key as `GEMINI_API_KEY` / `GOOGLE_API_KEY` and the app calls provider `gemini`. The app automatically adds `gemini-3.5-flash-lite` and uses it as the default route when no default route exists. Override the model with `GEMINI_DEFAULT_MODEL` if Google's catalog changes.
+6. Set `OPENAI_CONFIGURED=true` and/or `KIMI_CONFIGURED=true` in `.env` only after those paid providers are configured inside Hermes.
+7. Start the stack:
 
    ```bash
    docker compose up -d --build
    ```
 
-7. Check readiness:
+8. Check readiness:
 
    ```bash
    curl http://localhost:8642/health

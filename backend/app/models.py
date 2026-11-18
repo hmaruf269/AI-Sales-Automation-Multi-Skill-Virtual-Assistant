@@ -12,7 +12,7 @@ KNOWLEDGE_CATEGORIES = [
     "factory_profile", "product", "pricing", "moq", "production_capacity",
     "delivery_time", "payment_terms", "certification", "sales_statement",
 ]
-USAGE_CATEGORIES = ["llm_openai", "llm_kimi", "search", "extraction", "verification", "browser"]
+USAGE_CATEGORIES = ["llm_openai", "llm_kimi", "llm_gemini", "search", "extraction", "verification", "browser"]
 
 
 def pk() -> Mapped[int]:
@@ -60,7 +60,7 @@ class ModelConfig(Base):
     __tablename__ = "model_configs"
     __table_args__ = (UniqueConstraint("provider", "model_id"),)
     id: Mapped[int] = pk()
-    provider: Mapped[str] = mapped_column(String(20))  # openai | kimi
+    provider: Mapped[str] = mapped_column(String(20))  # openai | kimi | gemini
     model_id: Mapped[str] = mapped_column(String(200))
     label: Mapped[str] = mapped_column(String(200), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

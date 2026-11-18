@@ -10,8 +10,8 @@ export type ISODate = string;
 export type DataMode = "live" | "demo";
 export type ConnectionStatus = "connected" | "disconnected" | "needs_reauth" | "error";
 /** Model preference chosen when starting a task. "auto" uses the per-workflow routing in Settings. */
-export type ModelPreference = "auto" | "openai" | "kimi";
-export type ProviderKey = "openai" | "kimi";
+export type ModelPreference = "auto" | "openai" | "kimi" | "gemini";
+export type ProviderKey = "openai" | "kimi" | "gemini";
 
 export interface SourceLink {
   url: string;

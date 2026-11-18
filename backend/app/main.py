@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.agent import router as agent_router
 from app.api.auth import router as auth_router
+from app.bootstrap import ensure_gemini_free_model
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.security import configure_logging, ensure_owner
@@ -16,6 +17,7 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         ensure_owner(db)
+        ensure_gemini_free_model(db)
     yield
 
 

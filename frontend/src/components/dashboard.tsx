@@ -116,7 +116,7 @@ export function Dashboard() {
               {hermes ? ` · Hermes research ${hermes.research} · writer ${hermes.writer}` : " · checking Hermes…"}
               {statusQ.data?.mode === "demo" ? " · backend is labelled demo" : ""}
             </span>
-            <span>{statusQ.data?.providers.openai.configured ? "OpenAI configured" : "OpenAI not configured"} · {statusQ.data?.providers.kimi.configured ? "Kimi configured" : "Kimi not configured"}</span>
+            <span>{statusQ.data?.providers.gemini.configured ? "Gemini free tier ready" : "Gemini key missing"} · {statusQ.data?.providers.openai.configured ? "OpenAI configured" : "OpenAI off"} · {statusQ.data?.providers.kimi.configured ? "Kimi configured" : "Kimi off"}</span>
           </div>
           <header className="topbar">
             <div className="row">
@@ -354,8 +354,8 @@ function SettingsPage({ notify }: { notify: (s: string) => void }) {
   const qc = useQueryClient();
   const statusQ = useQuery({ queryKey: ["system-status"], queryFn: () => api.getSystemStatus() });
   const modelsQ = useQuery({ queryKey: ["models"], queryFn: () => api.listModelPricing() });
-  const [provider, setProvider] = useState<"openai" | "kimi">("openai");
-  const [modelId, setModelId] = useState("");
+  const [provider, setProvider] = useState<"openai" | "kimi" | "gemini">("gemini");
+  const [modelId, setModelId] = useState("gemini-3.5-flash-lite");
   const [label, setLabel] = useState("");
   const add = useMutation({
     mutationFn: () => api.createModelPricing({
@@ -387,15 +387,16 @@ function SettingsPage({ notify }: { notify: (s: string) => void }) {
         </section>
         <section className="card pad">
           <div className="card-head"><h3>Providers</h3></div>
-          <p>OpenAI: {st?.providers.openai.configured ? "server key present" : "not configured in Hermes"}</p>
-          <p>Kimi: {st?.providers.kimi.configured ? "server key present" : "not configured in Hermes"}</p>
+          <p>Gemini: {st?.providers.gemini.configured ? "free-tier key present" : "add GEMINI_API_KEY from Google AI Studio"}</p>
+          <p>OpenAI: {st?.providers.openai.configured ? "server key present" : "not configured"}</p>
+          <p>Kimi: {st?.providers.kimi.configured ? "server key present" : "not configured"}</p>
         </section>
       </div>
       <section className="card pad" style={{ marginTop: 16 }}>
         <div className="card-head"><h3>Add model</h3></div>
         <div className="form-row">
-          <div className="field"><label>Provider</label><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as "openai" | "kimi")}><option value="openai">OpenAI</option><option value="kimi">Kimi</option></select></div>
-          <div className="field"><label>Model ID</label><input className="input" value={modelId} onChange={(e) => setModelId(e.target.value)} placeholder="gpt-4.1-mini" required /></div>
+          <div className="field"><label>Provider</label><select className="select" value={provider} onChange={(e) => { const next = e.target.value as "openai" | "kimi" | "gemini"; setProvider(next); if (next === "gemini" && !modelId.trim()) setModelId("gemini-3.5-flash-lite"); }}><option value="gemini">Gemini (free tier)</option><option value="openai">OpenAI</option><option value="kimi">Kimi</option></select></div>
+          <div className="field"><label>Model ID</label><input className="input" value={modelId} onChange={(e) => setModelId(e.target.value)} placeholder="gemini-3.5-flash-lite" required /></div>
           <div className="field"><label>Label</label><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="GPT fast" /></div>
         </div>
         <Button kind="primary" className="" disabled={add.isPending || !modelId.trim()} onClick={() => add.mutate()} style={{ marginTop: 14 }}><Plus size={14} />Save model</Button>
