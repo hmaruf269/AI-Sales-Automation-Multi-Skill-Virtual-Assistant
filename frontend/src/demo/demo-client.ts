@@ -292,6 +292,7 @@ export class DemoApiClient implements ApiClient {
   // ------------------------------------------------------------------ auth & system
   async getSession(): Promise<T.SessionInfo> { await wait(60); return { authenticated: true, owner: { name: this.s.profile.name, email: this.s.profile.email } }; }
   async login(): Promise<T.SessionInfo> { return this.getSession(); }
+  async loginTelegram(): Promise<T.SessionInfo> { return this.getSession(); }
   async logout() { await wait(60); }
   async getSystemStatus(): Promise<T.SystemStatus> {
     await wait(80);

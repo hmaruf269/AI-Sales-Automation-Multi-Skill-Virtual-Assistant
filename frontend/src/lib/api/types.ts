@@ -30,6 +30,7 @@ export interface Paginated<T> {
 export interface SessionInfo {
   authenticated: boolean;
   owner?: { name: string; email: string };
+  auth_source?: "password" | "telegram";
   /** Sent back as X-CSRF-Token on every non-GET request. */
   csrf_token?: string;
 }

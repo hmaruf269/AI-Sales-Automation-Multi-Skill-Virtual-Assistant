@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { AlertTriangle, LoaderCircle, ShieldCheck } from "lucide-react";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useApi, useApiContext } from "@/lib/api/provider";
+import { telegramWebApp } from "@/lib/telegram";
 
 export function AppGate({ children }: { children: React.ReactNode }) {
   const { phase, backendError, retry, onLoggedIn } = useApiContext();
@@ -12,6 +13,20 @@ export function AppGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const telegramAttempted = useRef(false);
+
+  useEffect(() => {
+    if (phase !== "unauthenticated" || telegramAttempted.current) return;
+    const telegram = telegramWebApp();
+    if (!telegram?.initData) return;
+    telegramAttempted.current = true;
+    setBusy(true);
+    setError("");
+    api.loginTelegram(telegram.initData)
+      .then(onLoggedIn)
+      .catch((err) => setError(err instanceof ApiError ? err.message : errorMessage(err)))
+      .finally(() => setBusy(false));
+  }, [api, onLoggedIn, phase]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -49,6 +64,15 @@ export function AppGate({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (phase === "unauthenticated" && busy && telegramWebApp()?.initData) {
+    return (
+      <div className="empty" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
+        <LoaderCircle className="spin" size={28} />
+        <strong style={{ display: "block", marginTop: 12, color: "var(--text)" }}>Signing in with Telegram…</strong>
+      </div>
+    );
+  }
+
   if (phase === "unauthenticated") {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
@@ -59,7 +83,7 @@ export function AppGate({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <strong>Nexa Sales AI</strong>
-              <small>Live owner sign-in</small>
+              <small>{telegramWebApp()?.initData ? "Telegram sign-in unavailable — use owner login" : "Live owner sign-in"}</small>
             </div>
           </div>
           <div className="field">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, AlertTriangle, Archive, Bot, BriefcaseBusiness, CalendarDays, CheckCircle2, CircleDollarSign,
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { errorMessage } from "@/lib/api/client";
 import { useApi, useApiContext } from "@/lib/api/provider";
+import { telegramWebApp } from "@/lib/telegram";
 import type { ModelPricingInput, WorkflowRun, WorkflowStatus, WorkflowType } from "@/lib/api/types";
 
 type PageKey =
@@ -97,6 +98,19 @@ export function Dashboard() {
   const statusQ = useQuery({ queryKey: ["system-status"], queryFn: () => api.getSystemStatus(), refetchInterval: 15_000 });
   const hermes = statusQ.data?.hermes;
   const liveOk = hermes?.research === "connected" && hermes?.writer === "connected";
+
+  useEffect(() => {
+    const back = telegramWebApp()?.BackButton;
+    if (!back) return;
+    const goHome = () => go("overview");
+    if (page === "overview") {
+      back.hide();
+      return;
+    }
+    back.show();
+    back.onClick(goHome);
+    return () => back.offClick(goHome);
+  }, [page]);
 
   return (
     <div data-theme={dark ? "dark" : "light"}>

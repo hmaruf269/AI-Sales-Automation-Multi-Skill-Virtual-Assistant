@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:3000"
     upload_dir: str = "./data/uploads"
 
+    # Telegram Mini App. The bot token never leaves server-side processes.
+    telegram_bot_token: str = ""
+    telegram_owner_id: str = ""
+    telegram_mini_app_url: str = ""
+    telegram_init_data_max_age_seconds: int = 900
+
     # Hermes API servers (pinned image, see docker-compose.yml).
     hermes_research_url: str = ""
     hermes_research_key: str = ""

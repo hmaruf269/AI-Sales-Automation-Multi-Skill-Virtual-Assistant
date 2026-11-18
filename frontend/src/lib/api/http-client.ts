@@ -107,6 +107,11 @@ export class HttpApiClient implements ApiClient {
     this.csrf = s.csrf_token;
     return s;
   }
+  async loginTelegram(initData: string) {
+    const s = await this.post<T.SessionInfo>("/auth/telegram", { init_data: initData });
+    this.csrf = s.csrf_token;
+    return s;
+  }
   async logout() {
     await this.post("/auth/logout");
     this.csrf = undefined;

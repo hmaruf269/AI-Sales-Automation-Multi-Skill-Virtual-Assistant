@@ -5,7 +5,8 @@ import json
 import logging
 import secrets
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qsl
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Cookie, Depends, Header, HTTPException, Request
@@ -113,6 +114,10 @@ def login(db: Session, email: str, password: str, ip: str) -> tuple[str, str]:
         db.add(LoginAttempt(ip=ip))
         db.commit()
         raise HTTPException(401, "Incorrect email or password.")
+    return create_session(db, owner)
+
+
+def create_session(db: Session, owner: Owner) -> tuple[str, str]:
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
     db.add(AuthSession(
         owner_id=owner.id, token_hash=_token_hash(token), csrf_token=csrf,
@@ -120,6 +125,68 @@ def login(db: Session, email: str, password: str, ip: str) -> tuple[str, str]:
     ))
     db.commit()
     return token, csrf
+
+
+def validate_telegram_init_data(
+    init_data: str,
+    bot_token: str,
+    *,
+    max_age_seconds: int = 900,
+    now: datetime | None = None,
+) -> dict:
+    """Validate Telegram Mini App initData and return its authenticated user."""
+    if not init_data or not bot_token:
+        raise ValueError("Telegram Mini App authentication is not configured.")
+    try:
+        pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+    except ValueError as exc:
+        raise ValueError("Telegram authentication data is malformed.") from exc
+    values = dict(pairs)
+    if len(values) != len(pairs):
+        raise ValueError("Telegram authentication data contains duplicate fields.")
+    received_hash = values.pop("hash", "")
+    if len(received_hash) != 64:
+        raise ValueError("Telegram authentication data has no valid hash.")
+
+    data_check_string = "\n".join(f"{key}={values[key]}" for key in sorted(values))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_hash, received_hash):
+        raise ValueError("Telegram authentication signature is invalid.")
+
+    try:
+        auth_date = int(values["auth_date"])
+        user = json.loads(values["user"])
+        user_id = int(user["id"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("Telegram authentication data is missing its user or timestamp.") from exc
+    now = now or datetime.now(timezone.utc)
+    age = int(now.timestamp()) - auth_date
+    if age < -30 or age > max_age_seconds:
+        raise ValueError("Telegram authentication data has expired. Reopen the Mini App.")
+    user["id"] = user_id
+    return user
+
+
+def login_telegram(db: Session, init_data: str) -> tuple[str, str, dict]:
+    settings = get_settings()
+    if not settings.telegram_bot_token or not settings.telegram_owner_id.strip():
+        raise HTTPException(503, "Telegram owner authentication is not configured.")
+    try:
+        user = validate_telegram_init_data(
+            init_data,
+            settings.telegram_bot_token,
+            max_age_seconds=settings.telegram_init_data_max_age_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    if not hmac.compare_digest(str(user["id"]), settings.telegram_owner_id.strip()):
+        raise HTTPException(403, "This Telegram account is not allowed to open the workspace.")
+    owner = db.scalar(select(Owner).limit(1))
+    if owner is None:
+        raise HTTPException(503, "The application owner account has not been initialized.")
+    token, csrf = create_session(db, owner)
+    return token, csrf, user
 
 
 def logout(db: Session, token: str | None) -> None:

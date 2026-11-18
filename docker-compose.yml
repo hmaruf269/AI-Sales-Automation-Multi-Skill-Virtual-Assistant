@@ -66,6 +66,9 @@ services:
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNER_ID: ${TELEGRAM_OWNER_ID:-}
+      TELEGRAM_MINI_APP_URL: ${TELEGRAM_MINI_APP_URL:-}
       HERMES_RESEARCH_URL: http://hermes:8642
       HERMES_RESEARCH_KEY: ${HERMES_API_SERVER_KEY}
       HERMES_WRITER_URL: http://hermes:8642
@@ -105,6 +108,18 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       hermes: {condition: service_healthy}
+
+  telegram-bot:
+    profiles: ["telegram"]
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.telegram_bot"]
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNER_ID: ${TELEGRAM_OWNER_ID:-}
+      TELEGRAM_MINI_APP_URL: ${TELEGRAM_MINI_APP_URL:-}
+    depends_on:
+      - backend
 
   frontend:
     build:

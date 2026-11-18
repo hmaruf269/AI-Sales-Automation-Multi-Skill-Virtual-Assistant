@@ -10,6 +10,7 @@ export interface ApiClient {
   // auth & system
   getSession(): Promise<T.SessionInfo>;
   login(email: string, password: string): Promise<T.SessionInfo>;
+  loginTelegram(initData: string): Promise<T.SessionInfo>;
   logout(): Promise<void>;
   getSystemStatus(): Promise<T.SystemStatus>;
   setEmergencyPause(paused: boolean, reason: string): Promise<T.SystemStatus["emergency_pause"]>;
